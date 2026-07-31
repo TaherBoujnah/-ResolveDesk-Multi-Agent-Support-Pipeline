@@ -2,30 +2,45 @@ import streamlit as st
 import numpy as np
 import pypdf
 import time
+import os
 from mlflow.deployments import get_deploy_client
 from sklearn.metrics.pairwise import cosine_similarity
 
+# ==========================================
+# 0. SECURE CLOUD AUTHENTICATION (STREAMLIT CLOUD)
+# ==========================================
+# This allows Streamlit Community Cloud to talk to your private Databricks endpoints
+if "DATABRICKS_HOST" in st.secrets and "DATABRICKS_TOKEN" in st.secrets:
+    os.environ["DATABRICKS_HOST"] = st.secrets["DATABRICKS_HOST"]
+    os.environ["DATABRICKS_TOKEN"] = st.secrets["DATABRICKS_TOKEN"]
+
 # 1. Page Configuration
 st.set_page_config(
-    page_title="SupportIQ | Enterprise AI Gatekeeper",
-    page_icon="S",
+    page_title="ResolveDesk | Multi-Agent Support",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ==========================================
-# 2. ANIMATED OBSIDIAN & PICTURE DESIGN SYSTEM
+# 2. PREMIUM STATIC OBSIDIAN CSS 
 # ==========================================
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
     
-    /* GLOBAL RESET & TOP WHITE BANNER FIX */
-    html, body, [class*="css"], .stApp {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    /* ---------------------------------------------------
+       PREMIUM STATIC BACKGROUND
+       --------------------------------------------------- */
+    html, body, #root, [data-testid="stAppViewContainer"], .stApp {
+        /* Subtle indigo glow in the top left fading into deep obsidian black */
+        background: radial-gradient(circle at 10% 0%, #1e1b4b 0%, #09090b 40%, #050505 100%) !important;
+        background-attachment: fixed !important;
         color: #f4f4f5 !important;
+        font-family: 'Inter', sans-serif !important;
     }
     
+    /* TOP WHITE BANNER FIX */
     header[data-testid="stHeader"],
     [data-testid="stHeader"],
     .stAppHeader,
@@ -34,6 +49,9 @@ st.markdown("""
         background: transparent !important;
     }
     
+    /* ---------------------------------------------------
+       TYPOGRAPHY & CONTRAST LOCKS
+       --------------------------------------------------- */
     h1, h2, h3, h4, h5, h6,
     [data-testid="stMarkdownContainer"] h1,
     [data-testid="stMarkdownContainer"] h2,
@@ -64,14 +82,15 @@ st.markdown("""
         color: #d1d5db !important;
     }
     
-    /* NUCLEAR FIX: OBSIDIAN FILE UPLOADER & TEXT COLORS */
+    /* ---------------------------------------------------
+       FILE UPLOADER OBSIDIAN FIX
+       --------------------------------------------------- */
     [data-testid="stFileUploader"],
     [data-testid*="fileUploader" i],
     [data-testid*="FileUploader" i],
     [data-testid*="dropzone" i],
     [data-testid*="Dropzone" i] {
-        background-color: #09090b !important;
-        background: #09090b !important;
+        background-color: rgba(9, 9, 11, 0.7) !important;
         border: 1px dashed rgba(255, 255, 255, 0.3) !important;
         border-radius: 10px !important;
         padding: 16px !important;
@@ -94,7 +113,6 @@ st.markdown("""
     [data-testid*="FileUploader" i] button,
     [data-testid*="dropzone" i] button {
         background-color: #27272a !important;
-        background: #27272a !important;
         color: #ffffff !important;
         border: 1px solid rgba(255, 255, 255, 0.3) !important;
         font-weight: 600 !important;
@@ -107,42 +125,18 @@ st.markdown("""
         border-color: #ffffff !important;
     }
     
-    /* ANIMATED BACKGROUND PICTURE (NON-STATIC CANVAS) */
-    @keyframes slowDrift {
-        0% { transform: scale(1) translate(0px, 0px); }
-        50% { transform: scale(1.04) translate(-10px, -10px); }
-        100% { transform: scale(1) translate(0px, 0px); }
-    }
-    
-    .stApp {
-        background: transparent !important;
-    }
-    
-    .stApp::before {
-        content: "";
-        position: fixed;
-        top: -5%;
-        left: -5%;
-        width: 110%;
-        height: 110%;
-        background: linear-gradient(135deg, rgba(9, 9, 11, 0.88) 0%, rgba(18, 18, 20, 0.96) 100%), 
-                    url("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop");
-        background-size: cover;
-        background-position: center;
-        animation: slowDrift 28s infinite ease-in-out;
-        z-index: -1;
-    }
-    
-    /* Sidebar Styling - Frosted Dark Glass */
+    /* ---------------------------------------------------
+       SIDEBAR & ARCHITECTURAL CARDS
+       --------------------------------------------------- */
     [data-testid="stSidebar"] {
-        background-color: rgba(12, 12, 14, 0.85) !important;
-        backdrop-filter: blur(20px) !important;
+        background-color: rgba(12, 12, 14, 0.6) !important;
+        backdrop-filter: blur(25px) !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
     
-    /* DYNAMIC LEVITATING ARCHITECTURAL CARDS */
     div[data-testid="stVerticalBlockBorderWrapper"] {
-        background: linear-gradient(145deg, rgba(24, 24, 27, 0.75) 0%, rgba(18, 18, 20, 0.9) 100%) !important;
+        background: linear-gradient(145deg, rgba(24, 24, 27, 0.65) 0%, rgba(18, 18, 20, 0.8) 100%) !important;
+        backdrop-filter: blur(12px) !important;
         border: 1px solid rgba(255, 255, 255, 0.12) !important;
         border-radius: 14px !important;
         box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.08) !important;
@@ -155,12 +149,14 @@ st.markdown("""
         box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.9), 0 0 25px -5px rgba(59, 130, 246, 0.25) !important;
     }
     
-    /* EXPANDER CUSTOMIZATION */
+    /* ---------------------------------------------------
+       EXPANDER & TELEMETRY WIDGETS
+       --------------------------------------------------- */
     div[data-testid="stExpander"] {
-        background-color: rgba(18, 18, 20, 0.8) !important;
+        background-color: rgba(18, 18, 20, 0.7) !important;
         border: 1px solid rgba(255, 255, 255, 0.15) !important;
         border-radius: 10px !important;
-        backdrop-filter: blur(10px) !important;
+        backdrop-filter: blur(16px) !important;
     }
     div[data-testid="stExpander"] summary p {
         color: #ffffff !important;
@@ -169,10 +165,9 @@ st.markdown("""
         letter-spacing: 0.05em !important;
     }
 
-    /* TELEMETRY COMMAND-CENTER METRICS */
     div[data-testid="stMetric"] {
-        background: rgba(18, 18, 20, 0.85) !important;
-        backdrop-filter: blur(12px) !important;
+        background: rgba(18, 18, 20, 0.75) !important;
+        backdrop-filter: blur(16px) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-top: 3px solid #3b82f6 !important;
         padding: 16px 20px !important;
@@ -195,9 +190,11 @@ st.markdown("""
         font-size: 1.75rem !important;
     }
     
-    /* INTERACTIVE CONTROLS & ANIMATED BUTTON */
+    /* ---------------------------------------------------
+       INTERACTIVE CONTROLS & BANNERS
+       --------------------------------------------------- */
     .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {
-        background-color: rgba(18, 18, 20, 0.9) !important;
+        background-color: rgba(18, 18, 20, 0.8) !important;
         border: 1px solid rgba(255, 255, 255, 0.15) !important;
         color: #ffffff !important;
         border-radius: 8px !important;
@@ -210,7 +207,6 @@ st.markdown("""
     
     button[kind="primary"] {
         background: linear-gradient(270deg, #2563eb, #3b82f6, #1d4ed8, #2563eb) !important;
-        background-size: 300% 300% !important;
         border: 1px solid rgba(255, 255, 255, 0.25) !important;
         color: #ffffff !important;
         font-weight: 600 !important;
@@ -224,9 +220,9 @@ st.markdown("""
         box-shadow: 0 8px 25px rgba(59, 130, 246, 0.6) !important;
     }
     
-    /* STATUS BANNERS */
     div[data-testid="stStatusWidget"] {
-        background: rgba(18, 18, 20, 0.9) !important;
+        background: rgba(18, 18, 20, 0.8) !important;
+        backdrop-filter: blur(10px) !important;
         border: 1px solid rgba(255, 255, 255, 0.15) !important;
         border-radius: 10px !important;
     }
@@ -293,8 +289,8 @@ def run_compliance_guardrail(policy_context, ai_draft):
 # 5. LEFT SIDEBAR: KNOWLEDGE BASE MANAGER
 # ==========================================
 with st.sidebar:
-    st.markdown("### SupportIQ OS")
-    st.caption("ENTERPRISE RAG & GATEKEEPER v2.5")
+    st.markdown("### ResolveDesk")
+    st.caption("MULTI-AGENT SUPPORT PIPELINE v2.5")
     st.divider()
     
     st.markdown("#### Knowledge Engine")
@@ -335,7 +331,7 @@ st.markdown("<p style='color: #d1d5db; font-size: 1.05rem; margin-top: -10px; ma
 
 # Custom HTML Explanation Box
 st.markdown("""
-<div style="background: rgba(18, 18, 20, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); padding: 25px; border-radius: 12px; margin-bottom: 30px;">
+<div style="background: rgba(18, 18, 20, 0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.15); padding: 25px; border-radius: 12px; margin-bottom: 30px;">
     <h3 style="margin-top: 0; color: #ffffff; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">📖 System Architecture & Telemetry Overview</h3>
     <div style="display: flex; gap: 30px; margin-top: 20px; flex-wrap: wrap;">
         <div style="flex: 1; min-width: 300px;">
@@ -367,7 +363,7 @@ with st.expander("▶ ACCESS LIVE PIPELINE CONSOLE & TELEMETRY", expanded=False)
     # Executive Telemetry Bar
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
     with col_m1:
-        st.metric("Router Latency", "0.070 ms", "-99.9% vs LLM API")
+        st.metric("Router Latency", "0.070 ms", "-99.9% vs LLM API", delta_color="inverse")
     with col_m2:
         st.metric("Triage Precision", "83.72%", "Binary ML Router")
     with col_m3:

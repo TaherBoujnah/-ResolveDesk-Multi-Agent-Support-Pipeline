@@ -1,6 +1,6 @@
-streamlit
-scikit-learn
+streamlit==1.32.0
 numpy
+pypdf
+scikit-learn
 mlflow
 databricks-sdk
-pypdf
