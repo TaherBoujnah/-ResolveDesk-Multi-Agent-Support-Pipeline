@@ -4,3 +4,4 @@ pypdf
 scikit-learn
 mlflow
 databricks-sdk
+groq
