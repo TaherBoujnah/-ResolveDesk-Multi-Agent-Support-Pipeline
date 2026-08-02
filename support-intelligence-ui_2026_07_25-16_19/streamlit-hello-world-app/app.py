@@ -6,13 +6,23 @@ import os
 from mlflow.deployments import get_deploy_client
 from sklearn.metrics.pairwise import cosine_similarity
 
+# Try to import Groq for the fallback architecture
+try:
+    from groq import Groq
+    HAS_GROQ = True
+except ImportError:
+    HAS_GROQ = False
+
 # ==========================================
 # 0. SECURE CLOUD AUTHENTICATION (STREAMLIT CLOUD)
 # ==========================================
-# This allows Streamlit Community Cloud to talk to your private Databricks endpoints
 if "DATABRICKS_HOST" in st.secrets and "DATABRICKS_TOKEN" in st.secrets:
     os.environ["DATABRICKS_HOST"] = st.secrets["DATABRICKS_HOST"]
     os.environ["DATABRICKS_TOKEN"] = st.secrets["DATABRICKS_TOKEN"]
+
+# Load Groq API Key for Fallback Plan B
+if "GROQ_API_KEY" in st.secrets:
+    os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
 
 # 1. Page Configuration
 st.set_page_config(
@@ -29,89 +39,49 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
     
-    /* ---------------------------------------------------
-       PREMIUM STATIC BACKGROUND
-       --------------------------------------------------- */
     html, body, #root, [data-testid="stAppViewContainer"], .stApp {
-        /* Subtle indigo glow in the top left fading into deep obsidian black */
         background: radial-gradient(circle at 10% 0%, #1e1b4b 0%, #09090b 40%, #050505 100%) !important;
         background-attachment: fixed !important;
         color: #f4f4f5 !important;
         font-family: 'Inter', sans-serif !important;
     }
     
-    /* TOP WHITE BANNER FIX */
-    header[data-testid="stHeader"],
-    [data-testid="stHeader"],
-    .stAppHeader,
-    [data-testid="stToolbar"] {
+    header[data-testid="stHeader"], [data-testid="stHeader"], .stAppHeader, [data-testid="stToolbar"] {
         background-color: transparent !important;
         background: transparent !important;
     }
     
-    /* ---------------------------------------------------
-       TYPOGRAPHY & CONTRAST LOCKS
-       --------------------------------------------------- */
-    h1, h2, h3, h4, h5, h6,
-    [data-testid="stMarkdownContainer"] h1,
-    [data-testid="stMarkdownContainer"] h2,
-    [data-testid="stMarkdownContainer"] h3,
-    [data-testid="stMarkdownContainer"] h4,
-    [data-testid="stSidebar"] h1,
-    [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] h3,
-    [data-testid="stSidebar"] h4 {
+    h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3, [data-testid="stMarkdownContainer"] h4, [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] h4 {
         color: #ffffff !important;
         font-weight: 700 !important;
         letter-spacing: -0.03em !important;
     }
     
-    label,
-    [data-testid="stWidgetLabel"],
-    [data-testid="stWidgetLabel"] *,
-    .stSelectbox label *,
-    .stTextArea label *,
-    .stFileUploader label * {
+    label, [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] *, .stSelectbox label *,
+    .stTextArea label *, .stFileUploader label * {
         color: #ffffff !important;
         font-weight: 600 !important;
         font-size: 0.95rem !important;
         letter-spacing: 0.01em !important;
     }
     
-    p, span, small, .stCaption * {
-        color: #d1d5db !important;
-    }
+    p, span, small, .stCaption * { color: #d1d5db !important; }
     
-    /* ---------------------------------------------------
-       FILE UPLOADER OBSIDIAN FIX
-       --------------------------------------------------- */
-    [data-testid="stFileUploader"],
-    [data-testid*="fileUploader" i],
-    [data-testid*="FileUploader" i],
-    [data-testid*="dropzone" i],
-    [data-testid*="Dropzone" i] {
+    [data-testid="stFileUploader"], [data-testid*="fileUploader" i], [data-testid*="dropzone" i] {
         background-color: rgba(9, 9, 11, 0.7) !important;
         border: 1px dashed rgba(255, 255, 255, 0.3) !important;
         border-radius: 10px !important;
         padding: 16px !important;
     }
     
-    [data-testid="stFileUploader"] *,
-    [data-testid*="fileUploader" i] *,
-    [data-testid*="FileUploader" i] *,
-    [data-testid*="dropzone" i] *,
-    [data-testid*="Dropzone" i] *,
-    [data-testid*="dropzone" i] span,
-    [data-testid*="dropzone" i] small,
-    [data-testid*="dropzone" i] div {
+    [data-testid="stFileUploader"] *, [data-testid*="dropzone" i] * {
         color: #ffffff !important;
         fill: #ffffff !important;
     }
     
-    [data-testid="stFileUploader"] button,
-    [data-testid*="fileUploader" i] button,
-    [data-testid*="FileUploader" i] button,
-    [data-testid*="dropzone" i] button {
+    [data-testid="stFileUploader"] button, [data-testid*="dropzone" i] button {
         background-color: #27272a !important;
         color: #ffffff !important;
         border: 1px solid rgba(255, 255, 255, 0.3) !important;
@@ -119,15 +89,7 @@ st.markdown("""
         padding: 0.35rem 0.9rem !important;
         border-radius: 6px !important;
     }
-    [data-testid*="fileUploader" i] button:hover,
-    [data-testid*="FileUploader" i] button:hover {
-        background-color: #3f3f46 !important;
-        border-color: #ffffff !important;
-    }
     
-    /* ---------------------------------------------------
-       SIDEBAR & ARCHITECTURAL CARDS
-       --------------------------------------------------- */
     [data-testid="stSidebar"] {
         background-color: rgba(12, 12, 14, 0.6) !important;
         backdrop-filter: blur(25px) !important;
@@ -143,15 +105,7 @@ st.markdown("""
         padding: 12px !important;
         transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
-        transform: translateY(-4px) !important;
-        border-color: rgba(96, 165, 250, 0.5) !important;
-        box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.9), 0 0 25px -5px rgba(59, 130, 246, 0.25) !important;
-    }
     
-    /* ---------------------------------------------------
-       EXPANDER & TELEMETRY WIDGETS
-       --------------------------------------------------- */
     div[data-testid="stExpander"] {
         background-color: rgba(18, 18, 20, 0.7) !important;
         border: 1px solid rgba(255, 255, 255, 0.15) !important;
@@ -162,7 +116,6 @@ st.markdown("""
         color: #ffffff !important;
         font-weight: 700 !important;
         font-size: 1.15rem !important;
-        letter-spacing: 0.05em !important;
     }
 
     div[data-testid="stMetric"] {
@@ -174,15 +127,12 @@ st.markdown("""
         border-radius: 12px !important;
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4) !important;
     }
-    div[data-testid="stMetricLabel"] *,
-    div[data-testid="stMetricLabel"] > label {
+    div[data-testid="stMetricLabel"] * {
         color: #60a5fa !important;
         font-size: 0.8rem !important;
         font-weight: 600 !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.08em !important;
     }
-    div[data-testid="stMetricValue"],
     div[data-testid="stMetricValue"] * {
         color: #ffffff !important;
         font-family: 'JetBrains Mono', monospace !important;
@@ -190,19 +140,11 @@ st.markdown("""
         font-size: 1.75rem !important;
     }
     
-    /* ---------------------------------------------------
-       INTERACTIVE CONTROLS & BANNERS
-       --------------------------------------------------- */
     .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {
         background-color: rgba(18, 18, 20, 0.8) !important;
         border: 1px solid rgba(255, 255, 255, 0.15) !important;
         color: #ffffff !important;
         border-radius: 8px !important;
-        font-size: 0.95rem !important;
-    }
-    .stTextArea textarea:focus {
-        border-color: #3b82f6 !important;
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3) !important;
     }
     
     button[kind="primary"] {
@@ -213,19 +155,8 @@ st.markdown("""
         border-radius: 8px !important;
         padding: 0.65rem 1.2rem !important;
         box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4) !important;
-        transition: all 0.2s ease !important;
-    }
-    button[kind="primary"]:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 8px 25px rgba(59, 130, 246, 0.6) !important;
     }
     
-    div[data-testid="stStatusWidget"] {
-        background: rgba(18, 18, 20, 0.8) !important;
-        backdrop-filter: blur(10px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.15) !important;
-        border-radius: 10px !important;
-    }
     .status-badge-pass {
         background: linear-gradient(90deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 78, 59, 0.25) 100%);
         border: 1px solid rgba(16, 185, 129, 0.4);
@@ -267,12 +198,39 @@ ML_ROUTER_ENDPOINT = "support-ticket-api"
 EMBED_ENDPOINT = "databricks-bge-large-en"
 LLM_ENDPOINT = "databricks-meta-llama-3-3-70b-instruct"
 
-# 4. Helper Functions
+# ==========================================
+# 4. HELPER FUNCTIONS & FALLBACK LOGIC
+# ==========================================
 def parse_and_chunk_pdf(uploaded_file, chunk_size=300, overlap=50):
     reader = pypdf.PdfReader(uploaded_file)
     full_text = "".join([page.extract_text() + "\n" for page in reader.pages if page.extract_text()])
     words = full_text.split()
     return [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size - overlap) if len(" ".join(words[i:i + chunk_size]).strip()) > 20]
+
+def generate_llm_response(prompt, max_tokens=150, temperature=0.3):
+    """Dual-Provider Generation: Tries Databricks first, falls back to Groq API if failed."""
+    try:
+        # Try Primary Databricks
+        res = client.predict(
+            endpoint=LLM_ENDPOINT, 
+            inputs={"messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens, "temperature": temperature}
+        )
+        return res["choices"][0]["message"]["content"].strip()
+    
+    except Exception as e:
+        # Fallback to Groq if Databricks throws 403/500/Trial Ended
+        if HAS_GROQ and os.environ.get("GROQ_API_KEY"):
+            st.toast("⚡ Routing to Backup Engine (Groq Free Tier)", icon="🔄")
+            groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+            chat_completion = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama-3.3-70b-versatile",
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return chat_completion.choices[0].message.content.strip()
+        else:
+            raise Exception(f"Databricks failed and Groq API key is missing. Original Error: {e}")
 
 def run_compliance_guardrail(policy_context, ai_draft):
     guardrail_prompt = f"""
@@ -282,8 +240,8 @@ def run_compliance_guardrail(policy_context, ai_draft):
     TASK: Verify if the AI draft is 100% faithful to the policy. If it invents unauthorized discounts, promises timelines not in the policy, or contradicts rules, it fails.
     Reply ONLY with: "PASSED" (if compliant) or "BLOCKED: [Brief reason why]" (if it violates rules).
     """
-    res = client.predict(endpoint=LLM_ENDPOINT, inputs={"messages": [{"role": "user", "content": guardrail_prompt}], "max_tokens": 30, "temperature": 0.0})
-    return res["choices"][0]["message"]["content"].strip()
+    return generate_llm_response(guardrail_prompt, max_tokens=30, temperature=0.0)
+
 
 # ==========================================
 # 5. LEFT SIDEBAR: KNOWLEDGE BASE MANAGER
@@ -321,7 +279,7 @@ with st.sidebar:
         st.info("[ACTIVE] Primion Enterprise Policy")
     
     st.divider()
-    st.caption("SYSTEM: DATABRICKS UNITY CATALOG")
+    st.caption("SYSTEM: HYBRID MULTI-CLOUD ARCHITECTURE")
 
 # ==========================================
 # 6. MAIN STAGE: EXECUTIVE EXPLANATION
@@ -329,23 +287,22 @@ with st.sidebar:
 st.markdown("## Autonomous Support Gatekeeper & Compliance Guardrail")
 st.markdown("<p style='color: #d1d5db; font-size: 1.05rem; margin-top: -10px; margin-bottom: 25px;'>A multi-agent MLOps pipeline designed to intercept, route, and safely resolve customer traffic.</p>", unsafe_allow_html=True)
 
-# Custom HTML Explanation Box
 st.markdown("""
 <div style="background: rgba(18, 18, 20, 0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.15); padding: 25px; border-radius: 12px; margin-bottom: 30px;">
     <h3 style="margin-top: 0; color: #ffffff; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">📖 System Architecture & Telemetry Overview</h3>
     <div style="display: flex; gap: 30px; margin-top: 20px; flex-wrap: wrap;">
         <div style="flex: 1; min-width: 300px;">
             <h4 style="color: #60a5fa; margin-bottom: 10px;">[1] The 4-Stage Defense Pipeline</h4>
-            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b>1. ML Triage Router:</b> A sub-millisecond Random Forest classifier intercepts text, halting the pipeline for non-urgent traffic to save expensive LLM compute.</p>
-            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b>2. Vector RAG:</b> BGE-Large embeddings retrieve governing policy clauses specifically tied to the complaint.</p>
-            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b>3. Generative Draft:</b> Llama 3 70B drafts a resolution grounded strictly in the retrieved text.</p>
-            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b>4. Zero-Temp Guardrail:</b> A secondary strict AI auditor verifies the draft against the policy, blocking hallucinations and unauthorized concessions.</p>
+            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b>1. ML Triage Router:</b> A sub-millisecond Random Forest classifier intercepts text, halting the pipeline for non-urgent traffic.</p>
+            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b>2. Vector RAG:</b> Embeddings retrieve governing policy clauses specifically tied to the complaint.</p>
+            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b>3. Generative Draft:</b> Llama 3 drafts a resolution grounded strictly in the retrieved text.</p>
+            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b>4. Zero-Temp Guardrail:</b> A strict AI auditor verifies the draft against the policy, blocking unauthorized concessions.</p>
         </div>
         <div style="flex: 1; min-width: 300px;">
             <h4 style="color: #34d399; margin-bottom: 10px;">[2] What The Scenarios Test</h4>
-            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b style="color: #60a5fa;">[ML] Triage Short-Circuit:</b> Tests compute cost-saving. Bypasses the LLM entirely for a 5-star review.</p>
-            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b style="color: #34d399;">[RAG] Compliant Resolution:</b> Tests accuracy. Resolves a valid complaint autonomously using exact legal rules.</p>
-            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b style="color: #f87171;">[TRAP] Hallucination:</b> Tests safety. A customer demands an unauthorized refund; the Guardrail intercepts the LLM's response to prevent financial leakage.</p>
+            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b style="color: #60a5fa;">[ML] Triage Short-Circuit:</b> Bypasses the LLM entirely for a 5-star review.</p>
+            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b style="color: #34d399;">[RAG] Compliant Resolution:</b> Resolves a valid complaint autonomously using exact legal rules.</p>
+            <p style="color: #d1d5db; font-size: 0.95rem; margin-bottom: 6px;"><b style="color: #f87171;">[TRAP] Hallucination:</b> Customer demands an unauthorized refund; Guardrail blocks the response.</p>
         </div>
     </div>
 </div>
@@ -360,7 +317,6 @@ if "kb_chunks" not in st.session_state:
 # ==========================================
 with st.expander("▶ ACCESS LIVE PIPELINE CONSOLE & TELEMETRY", expanded=False):
     
-    # Executive Telemetry Bar
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
     with col_m1:
         st.metric("Router Latency", "0.070 ms", "-99.9% vs LLM API", delta_color="inverse")
@@ -373,7 +329,6 @@ with st.expander("▶ ACCESS LIVE PIPELINE CONSOLE & TELEMETRY", expanded=False)
 
     st.divider()
 
-    # Layout: 2 Architectural Columns
     col_input, col_output = st.columns([1, 1.25], gap="large")
 
     with col_input:
@@ -417,10 +372,10 @@ with st.expander("▶ ACCESS LIVE PIPELINE CONSOLE & TELEMETRY", expanded=False)
                     with st.container(border=True):
                         st.markdown("#### ML Triage Routing: Short-Circuit")
                         st.success(f"[PREDICTED SCORE] {rating} / 5 Stars (Non-Urgent Praise)")
-                        st.info("[COMPUTE OPTIMIZATION] 100% of Llama 3 GPU token generation bypassed. Automated acknowledgment dispatched in <0.1 ms.")
-                        st.markdown("##### Automated Dispatch Reply:\n> *Thank you so much for your positive review! We are thrilled to hear that our hardware and network setup met your expectations. Have a wonderful day!*")
+                        st.info("[COMPUTE OPTIMIZATION] 100% of LLM GPU generation bypassed. Automated acknowledgment dispatched.")
+                        st.markdown("##### Automated Dispatch Reply:\n> *Thank you so much for your positive review! We are thrilled to hear that our hardware met your expectations.*")
                 else:
-                    st.write("[STEP 2] Urgency flagged. Querying BGE-Large vector space for governing legal clauses...")
+                    st.write("[STEP 2] Urgency flagged. Querying vector space for governing legal clauses...")
                     q_embed = client.predict(endpoint=EMBED_ENDPOINT, inputs={"input": [ticket_text]})
                     q_vec = np.array([q_embed["data"][0]["embedding"]])
                     sims = cosine_similarity(q_vec, st.session_state["kb_embeddings"])[0]
@@ -428,10 +383,9 @@ with st.expander("▶ ACCESS LIVE PIPELINE CONSOLE & TELEMETRY", expanded=False)
                     retrieved_chunk = st.session_state["kb_chunks"][best_idx]
                     confidence = sims[best_idx]
                     
-                    st.write("[STEP 3] Generating policy-grounded resolution via Llama 3 70B Instruct...")
+                    st.write("[STEP 3] Generating policy-grounded resolution...")
                     prompt = f"You are an expert support agent. A customer left a complaint. Using ONLY this policy: '{retrieved_chunk}', draft a professional resolution for: '{ticket_text}'"
-                    llm_res = client.predict(endpoint=LLM_ENDPOINT, inputs={"messages": [{"role": "user", "content": prompt}], "max_tokens": 150, "temperature": 0.3})
-                    draft = llm_res["choices"][0]["message"]["content"].strip()
+                    draft = generate_llm_response(prompt, max_tokens=150, temperature=0.3)
                     
                     st.write("[STEP 4] Auditing draft via zero-temperature Compliance Guardrail...")
                     verdict = run_compliance_guardrail(retrieved_chunk, draft)
@@ -450,7 +404,7 @@ with st.expander("▶ ACCESS LIVE PIPELINE CONSOLE & TELEMETRY", expanded=False)
                                 <div style="font-size: 0.9rem; color: #d1d5db;">Output verified 100% compliant with uploaded corporate policy manual.</div>
                             </div>
                             """, unsafe_allow_html=True)
-                            st.markdown("##### Approved Llama 3 Resolution:")
+                            st.markdown("##### Approved AI Resolution:")
                             st.success(draft)
                         else:
                             st.markdown(f"""
@@ -461,8 +415,8 @@ with st.expander("▶ ACCESS LIVE PIPELINE CONSOLE & TELEMETRY", expanded=False)
                             """, unsafe_allow_html=True)
                             st.warning("[AUTONOMOUS OVERRIDE] The model attempted to generate an unauthorized concession or violate commercial rules. Output intercepted.")
                             st.markdown("##### Safe Human-Handoff Fallback:")
-                            st.error("We sincerely apologize for the frustration you've experienced. Your ticket has been escalated directly to a Senior Support Manager who is reviewing your account and our official policies to resolve this immediately.")
+                            st.error("We sincerely apologize for the frustration you've experienced. Your ticket has been escalated directly to a Senior Support Manager who is reviewing your account and our policies to resolve this immediately.")
         else:
             with st.container(border=True):
                 st.markdown("#### Waiting for Telemetry Ingestion")
-                st.info("[SYSTEM READY] Select a verification scenario on the left and click EXECUTE AI DEFENSE PIPELINE to observe sub-millisecond triage, vector search, and active guardrail auditing.")
+                st.info("[SYSTEM READY] Select a verification scenario on the left and click EXECUTE AI DEFENSE PIPELINE.")
