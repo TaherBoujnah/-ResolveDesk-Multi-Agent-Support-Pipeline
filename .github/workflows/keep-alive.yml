@@ -1,0 +1,24 @@
+name: Streamlit Keep-Alive
+
+on:
+  schedule:
+    - cron: "0 */4 * * *" # Runs every 4 hours automatically
+  workflow_dispatch: # Allows you to trigger it manually
+
+jobs:
+  wake-up-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          
+      - name: Install Browser Automation
+        run: pip install selenium
+        
+      - name: Run Headless Chrome
+        run: python wake.py
