@@ -5,3 +5,4 @@ scikit-learn
 mlflow
 databricks-sdk
 groq
+sentence-transformers
